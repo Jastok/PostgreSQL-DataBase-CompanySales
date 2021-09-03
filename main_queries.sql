@@ -3,7 +3,7 @@ SELECT * FROM
 (SELECT ROW_NUMBER() OVER(ORDER BY sales DESC) as rank,
 	c_name, 
 	sales, 
-	profit - log_costs as profit, 
+	profit - log_costs as net_profit, 
 	ROUND((sales / SUM(sales) OVER()) * 100, 2) as percent_sales,
 	ROUND((profit / SUM(profit) OVER()) * 100, 2) as percent_profit FROM 
 		(SELECT cl.c_name,
@@ -26,7 +26,7 @@ WHERE rank <= 10;
 -- Sales and profit by towns, taking into account refunds and logistics costs.
 SELECT town, 
 	sales, 
-	profit - log_costs as profit, 
+	profit - log_costs as net_profit, 
 	ROUND((sales / SUM(sales) OVER()) * 100, 2) as percent_sales,
 	ROUND((profit / SUM(profit) OVER()) * 100, 2) as percent_profit FROM 
 		(SELECT cl.town, 
@@ -56,13 +56,13 @@ GROUP BY category, maker
 ORDER BY sales DESC;
 
 
--- In all of the above queries, we can additionally specify "WHERE" to clarify the time period we are interested!
+-- In all of the above queries we can additionally specify "WHERE" to clarify the time period we are interested!
 
 
 -- Sales and profit dynamics by months, taking into account returns and logistics costs
 SELECT month, 
 	sales, 
-	profit - log_costs as profit, 
+	profit - log_costs as net_profit, 
 	ROUND((sales / SUM(sales) OVER()) * 100, 2) as percent_sales,
 	ROUND((profit / SUM(profit) OVER()) * 100, 2) as percent_profit FROM 
 		(SELECT EXTRACT(MONTH FROM o.date) as month,
@@ -114,3 +114,32 @@ SELECT p_name,
 		JOIN orders_products as op USING(p_id)
 		JOIN orders as o USING(order_id)
 		WHERE o.order_id = 1
+
+-- Monthly sales report
+SELECT date,
+	doc,
+	c_name, 
+	sales, 
+	net_profit,
+	ROUND((net_profit / SUM(net_profit) OVER()) * 100, 2) as percent_profit FROM 
+		(SELECT order_id, 
+			sales, 
+			profit - log_costs as net_profit FROM
+				(SELECT o.order_id, 
+					SUM(op.price * op.count - op.price * op.refund_count) as sales,
+					SUM((op.price * op.count - op.price * op.refund_count) - (op.p_costs * op.count - op.p_costs * op.refund_count)) as profit
+				FROM clients as cl
+				JOIN orders as o USING(client_id)
+				JOIN orders_products as op USING(order_id)
+				WHERE to_char(o.date, 'YYYY-MM') = '2021-08'
+				GROUP BY order_id) as t1
+		JOIN
+				(SELECT order_id, 
+					SUM(log_costs) as log_costs
+				FROM orders
+				WHERE to_char(date, 'YYYY-MM') = '2021-08'
+				GROUP BY order_id) as t2
+				USING(order_id)) as t3
+JOIN orders USING(order_id)
+JOIN clients USING(client_id)
+ORDER BY date
